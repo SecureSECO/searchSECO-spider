@@ -2,7 +2,7 @@ import git, { clone, checkout } from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import fs from 'fs';
 import * as path from 'path';
-import BlameJS from 'blamejs';
+const BlameJS = require('blamejs')
 const glob = require('glob');
 import { exec } from 'child_process';
 
@@ -167,7 +167,7 @@ export default class Spider {
                     const lineData = Object.values(blamejs.getLineData());
 
                     // Transform into an array of CodeBlock
-                    const codeBlocks: CodeBlock[] = lineData.map(line => {
+                    const codeBlocks: CodeBlock[] = lineData.map((line: any) => {
                         const commit = commitData[line.hash.toString()];
                         return {
                             line: line.lineNumber,
