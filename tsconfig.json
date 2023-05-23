@@ -17,5 +17,9 @@
   "include": [
         "./*.ts",
         "**/*.ts",
+    ],
+    "exclude": [
+        "./tests/**/*",
+        "jest.config.ts"
     ]
 }
