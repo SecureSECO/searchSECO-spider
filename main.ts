@@ -1,4 +1,4 @@
-import Spider from "./Spider";
+import Spider from "./src/Spider";
 
 (async () => {
     const spider = new Spider()

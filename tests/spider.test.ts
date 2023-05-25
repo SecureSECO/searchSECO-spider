@@ -1,4 +1,4 @@
-import Spider from "../Spider";
+import Spider from "../src/Spider";
 import fs from "fs";
 import path from "path";
 import git from 'isomorphic-git';
