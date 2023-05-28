@@ -28,6 +28,24 @@ export interface CodeBlock {
 
 export type AuthorData = Map<string, CodeBlock[]>;
 
+async function ExecuteCommand(cmd: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        exec(cmd, (error, stdout, stderr) => {
+            if (error) {
+                reject(error)
+                return
+            }
+
+            if (stderr) {
+                reject(new Error(stderr))
+                return
+            }
+
+            resolve(stdout)
+        })
+    })
+}
+
 export default class Spider {
     private repo: string | null = null;
 
@@ -193,6 +211,29 @@ export default class Spider {
         });
     }
 
+    async getTags(filePath: string): Promise<[string, number, string][]> {
+        const tagsStr = await ExecuteCommand(`git -C ${filePath} tags`)
+        const tags: [string, number, string][] = []
+        tagsStr.split('\n').forEach(async tag => {
+            const timeStampStr = await ExecuteCommand(`git -C ${filePath } show -1 -s --format=%ct ${tag}`)
+            if (timeStampStr) {
+                const timeStamp = parseInt(timeStampStr) * 1000
+                const commitHash = await this.getCommitHash(filePath, tag)
+                tags.push([tag, timeStamp, commitHash])
+            }
+        })
+
+        tags.sort((a: [string, number, string], b: [string, number, string]) => {
+            if (a[1] < b[1])
+                return -1
+            else if (a[1] == b[1])
+                return 0
+            return 1
+        })
+
+        return tags
+    }
+
     getCommitHash(filePath: string, tag: string): Promise<string> {
         return new Promise((resolve, reject) => {
             exec(`git -C ${filePath} rev-list -n 1 ${tag}`, (error, stdout, stderr) => {
@@ -206,7 +247,7 @@ export default class Spider {
                     return
                 }
 
-                return stdout.substring(0, stdout.length-1)
+                resolve(stdout.substring(0, stdout.length-1))
             })
         })
     }
