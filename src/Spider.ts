@@ -252,4 +252,22 @@ export default class Spider {
         })
     }
 
+    async getVersionTime(filePath: string, version: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            exec(`git -C ${filePath} show -s --format=%ct ${version}`, (error, stdout, stderr) => {
+                if (error) {
+                    reject(error)
+                    return
+                }
+                if (stderr) {
+                    reject(new Error(stderr))
+                    return
+                }
+
+                resolve(`${stdout.substring(0, stdout.indexOf('\n'))}000`)
+            })
+        })
+    }
+
+
 }
