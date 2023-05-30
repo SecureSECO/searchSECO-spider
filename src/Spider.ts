@@ -64,12 +64,7 @@ export default class Spider {
             if (!fs.existsSync(filePath))
                 resolve()
 
-            fs.promises.readdir(filePath).then(files => {
-                files.forEach(async file => {
-                    await fs.promises.rm(path.join(filePath, file), { recursive: true, force: true })
-                })
-                resolve()
-            })
+            fs.promises.rm(filePath, { recursive: true, force: true }).then(() => resolve())
         })
     }
 
