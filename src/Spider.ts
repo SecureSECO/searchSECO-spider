@@ -223,7 +223,7 @@ export default class Spider {
                     reject(new Error(stderr));
                     return;
                 }
-                exec(`git -C ${filePath} blame --line-porcelain ${file}`, { maxBuffer: Infinity }, (error, stdout, stderr) => {
+                exec(`git -C ${filePath} blame --line-porcelain "${file}"`, { maxBuffer: Infinity }, (error, stdout, stderr) => {
                     if (error) {
                         reject(error);
                         return;
