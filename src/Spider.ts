@@ -123,7 +123,7 @@ export default class Spider {
         Logger.Debug(`Switched to tag: ${newTag}`, Logger.GetCallerLocation())
 
         // Get all files in repository.
-        const files = await this.getAllFiles(filePath);
+        const files = this.getAllFiles(filePath);
 
         // Delete all unchanged files.
         const removedFiles: string[] = [];
@@ -212,7 +212,7 @@ export default class Spider {
     */
     async downloadAuthor(filePath: string): Promise<AuthorData> {
         const authorData: AuthorData = new Map();
-        const files = await this.getAllFiles(filePath);
+        const files = this.getAllFiles(filePath);
 
         // Each file is processed in parallel
         const allAuthorData = await Promise.all(files.map(file => this.getBlameData(filePath, file)));
@@ -226,16 +226,19 @@ export default class Spider {
     }
 
     // Ignores .git folder
-    async getAllFiles(filePath: string, acc: string[] = []): Promise<string[]> {
-        const allFiles = await fs.promises.readdir(filePath, { withFileTypes: true });
-        allFiles.forEach(file => {
-            if (/^.git/.test(file.name))
-                return
-            if (file.isDirectory )
-                return this.getAllFiles(path.join(filePath, file.name), acc)
-            else acc.push(file.name)
-        })
-        return acc;
+    getAllFiles(dir: string): string[] {
+        function recursivelyGetFiles(currDir: string, acc: string[]): string[] {
+            fs.readdirSync(currDir).forEach((file: string) => {
+                if (/^.git/.test(file))
+                    return
+                const abs_path = path.join(currDir, file);
+                if (fs.statSync(abs_path).isDirectory()) return recursivelyGetFiles(abs_path, acc);
+                else acc.push(abs_path);
+            });
+            return acc
+        }
+    
+        return recursivelyGetFiles(dir.replace('\\', '/'), [])
     }
 
     // Based on https://github.com/mattpardee/git-blame-parser-js
