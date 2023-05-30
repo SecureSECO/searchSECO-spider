@@ -266,9 +266,11 @@ export default class Spider {
     }
 
     async getTags(filePath: string): Promise<[string, number, string][]> {
-        const tagsStr = await ExecuteCommand(`git -C ${filePath} tags`)
+        const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`)
         const tags: [string, number, string][] = []
         tagsStr.split('\n').forEach(async tag => {
+            if (!tag)
+                return
             const timeStampStr = await ExecuteCommand(`git -C ${filePath} show -1 -s --format=%ct ${tag}`)
             if (timeStampStr) {
                 const timeStamp = parseInt(timeStampStr) * 1000
