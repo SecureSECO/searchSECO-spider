@@ -5,6 +5,7 @@ import * as path from 'path';
 const BlameJS = require('blamejs')
 const glob = require('glob');
 import { exec } from 'child_process';
+import Logger, { Verbosity } from './searchSECO-logger/src/Logger'
 
 export interface CommitData {
     author: string;
@@ -55,6 +56,11 @@ async function ExecuteCommand(cmd: string): Promise<string> {
 export default class Spider {
     private repo: string | null = null;
 
+    constructor(verbosity: Verbosity = Verbosity.DEBUG) {
+        Logger.SetModule("spider")
+        Logger.SetVerbosity(verbosity)
+    }
+
     /**
      * Clears the directory specified by filePath
      */
@@ -89,8 +95,7 @@ export default class Spider {
             this.repo = filePath;
         }
         catch (error) {
-            console.error(`Failed to download ${url} to ${filePath}: ${error}`);
-            throw error;
+            Logger.Warning(`Failed to download ${url} to ${filePath}: ${error}`, Logger.GetCallerLocation())
         }
     }
 
@@ -113,7 +118,7 @@ export default class Spider {
             changedFiles = this.getFilepaths(changed, filePath);
         }
         await this.switchVersion(newTag, filePath);
-        console.log(`Switched to tag: ${newTag}`);
+        Logger.Debug(`Switched to tag: ${newTag}`, Logger.GetCallerLocation())
 
         // Get all files in repository.
         const files = await this.getAllFiles(filePath);
@@ -165,8 +170,7 @@ export default class Spider {
                 ref: tag,
             });
         } catch (error) {
-            console.error(`Failed to switch to version ${tag}: ${error}`);
-            throw error;
+            Logger.Warning(`Failed to switch to version ${tag}: ${error}`, Logger.GetCallerLocation())
         }
     }
 
@@ -193,7 +197,7 @@ export default class Spider {
                 }
             }
         } catch (error) {
-            console.error(`Failed to trim files in ${filePath}: ${error}`);
+            Logger.Warning(`Failed to trim files in ${filePath}: ${error}`, Logger.GetCallerLocation())
         }
     }
 
