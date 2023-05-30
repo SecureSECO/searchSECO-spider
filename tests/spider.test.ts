@@ -56,6 +56,7 @@ describe("Spider", () => {
 
             expect(licenseData[0].commit.author).toBe(expectedAuthor);
             expect(licenseData[0].commit.authorMail).toBe(expectedEmail);
+            console.log(licenseData[0].numLines);
         }, 600000);
     });
 

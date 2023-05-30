@@ -218,7 +218,7 @@ export default class Spider {
                     reject(error);
                     return;
                 }
-
+    
                 if (stderr) {
                     reject(new Error(stderr));
                     return;
@@ -228,23 +228,30 @@ export default class Spider {
                         reject(error);
                         return;
                     }
-
+    
                     if (stderr) {
                         reject(new Error(stderr));
-                        return;
                     }
-
+    
                     const blamejs = new BlameJS();
                     blamejs.parseBlame(stdout);
                     const commitData = blamejs.getCommitData();
-                    const lineData = Object.values(blamejs.getLineData());
-
+                    const lineData: { [key: string]: any }[] = Object.values(blamejs.getLineData());
+    
+                    // Group lines by commit hash
+                    const groupedLines = lineData.reduce((groups: { [key: string]: any[] }, line) => {
+                        (groups[line.hash.toString()] = groups[line.hash.toString()] || []).push(line);
+                        return groups;
+                    }, {});
+    
                     // Transform into an array of CodeBlock
-                    const codeBlocks: CodeBlock[] = lineData.map((line: any) => {
-                        const commit = commitData[line.hash.toString()];
-                        return {
-                            line: line.lineNumber,
-                            numLines: 1, // TODO: blamejs doesn't provide this info
+                    const codeBlocks: CodeBlock[] = [];
+                    for (const hash in groupedLines) {
+                        const commit = commitData[hash];
+                        const lines = groupedLines[hash];
+                        codeBlocks.push({
+                            line: lines[0].lineNumber, // assuming lines are sorted by lineNumber
+                            numLines: lines.length,
                             commit: {
                                 author: commit.author,
                                 authorMail: commit.authorMail,
@@ -258,13 +265,14 @@ export default class Spider {
                                 previousHash: commit.previousHash,
                                 fileName: commit.filename,
                             },
-                        };
-                    });
+                        });
+                    }
                     resolve(codeBlocks);
                 });
             });
         });
     }
+    
 
     async getTags(filePath: string): Promise<[string, number, string][]> {
         const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`)
