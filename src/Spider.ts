@@ -72,6 +72,10 @@ export default class Spider {
     * @param branch Branch of the source to download.
     */
     async downloadRepo(url: string, filePath: string, branch: string): Promise<void> {
+
+        if (!fs.existsSync(filePath))
+            fs.mkdirSync(filePath)
+
         try {
             await clone({
                 fs,
