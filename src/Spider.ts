@@ -38,12 +38,12 @@ async function ExecuteCommand(cmd: string): Promise<string> {
     return new Promise((resolve, reject) => {
         exec(cmd, (error, stdout, stderr) => {
             if (error) {
-                reject(error)
+                resolve('')
                 return
             }
 
             if (stderr) {
-                reject(new Error(stderr))
+                resolve('')
                 return
             }
 
@@ -235,22 +235,22 @@ export default class Spider {
             // Check the git status before proceeding with blaming
             exec(`git -C ${filePath} status`, (error, stdout, stderr) => {
                 if (error) {
-                    reject(error);
+                    resolve([]);
                     return;
                 }
 
                 if (stderr) {
-                    reject(new Error(stderr));
+                    resolve([]);
                     return;
                 }
                 exec(`git -C ${filePath} blame --line-porcelain "${file}"`, { maxBuffer: Infinity }, (error, stdout, stderr) => {
                     if (error) {
-                        reject(error);
+                        resolve([]);
                         return;
                     }
 
                     if (stderr) {
-                        reject(new Error(stderr));
+                        resolve([]);
                     }
 
                     const blamejs = new BlameJS();
@@ -323,12 +323,12 @@ export default class Spider {
         return new Promise((resolve, reject) => {
             exec(`git -C ${filePath} rev-list -n 1 ${tag}`, (error, stdout, stderr) => {
                 if (error) {
-                    reject(error)
+                    resolve('')
                     return
                 }
 
                 if (stderr) {
-                    reject(new Error(stderr))
+                    resolve('')
                     return
                 }
 
@@ -404,11 +404,11 @@ export default class Spider {
         return new Promise((resolve, reject) => {
             exec(`git -C ${filePath} show -s --format=%ct ${version}`, (error, stdout, stderr) => {
                 if (error) {
-                    reject(error)
+                    resolve('')
                     return
                 }
                 if (stderr) {
-                    reject(new Error(stderr))
+                    resolve('')
                     return
                 }
 
