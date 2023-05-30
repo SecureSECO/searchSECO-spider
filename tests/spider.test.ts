@@ -59,6 +59,35 @@ describe("Spider", () => {
         }, 600000);
     });
 
+    describe("updateVersion", () => {
+        it("updates the version, deletes unchanged files and keeps changed files", async () => {
+            const prevTag = "v1.23.0";
+            const newTag = "v1.24.0";
+
+            // Get all current files
+            const initialFiles = await spider.getAllFiles(tempDir);
+
+            // updateVersion returns the unchanged files
+            const unchangedFiles = await spider.updateVersion(prevTag, newTag, tempDir, initialFiles);
+
+            // Check if all the unchanged files were deleted.
+            for (const file of unchangedFiles) {
+                const exists = fs.existsSync(path.join(tempDir, file));
+                expect(exists).toBe(false);
+            }
+
+            // Get the new list of files after the update
+            const currentFiles = await spider.getAllFiles(tempDir);
+
+            // The remaining files should all be part of the changed files
+            for (const file of currentFiles) {
+                expect(initialFiles.includes(file)).toBe(false);
+                expect(unchangedFiles.includes(file)).toBe(false);
+            }
+        }, 100000);
+    });
+
+
     describe("switchVersion", () => {
         it("switches to a different version", async () => {
             const tag = "v1.19.3";

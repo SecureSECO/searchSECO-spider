@@ -76,6 +76,60 @@ export default class Spider {
     }
 
     /**
+    * Updates project from one version to another, keeping track of unchanged files.
+    * Deletes unchanged files from local project.
+    *
+    * @param prevTag Name of current version.
+    * @param newTag Name of version to update to.
+    * @param filePath Local path where the project is stored.
+    * @param prevUnchangedFiles Name of the previous unchanged files, 
+    *                           which were deleted from the local project.
+    */
+    async updateVersion(prevTag: string, newTag: string, filePath: string, prevUnchangedFiles: string[]): Promise<string[]> {
+        // Get list of changed files between prevTag and newTag.
+        let changedFiles: string[] = [];
+        if (prevTag) {
+            const command = `cd "${filePath}" && git diff --name-only ${prevTag} ${newTag}`;
+            const changed = await ExecuteCommand(command);
+            changedFiles = this.getFilepaths(changed, filePath);
+        }
+        await this.switchVersion(newTag);
+        console.log(`Switched to tag: ${newTag}`);
+
+        // Get all files in repository.
+        const files = await this.getAllFiles(filePath);
+
+        // Delete all unchanged files.
+        const removedFiles: string[] = [];
+        if (prevTag) {
+            for (const file of prevUnchangedFiles) {
+                if (!changedFiles.includes(file)) {
+                    removedFiles.push(file);
+                }
+            }
+            for (const file of files) {
+                if (!changedFiles.includes(file)) {
+                    const fileString = path.relative(filePath, file).replace(/\\/g, '/');
+                    removedFiles.push(fileString);
+
+                    // Delete file locally.
+                    await fs.promises.unlink(path.join(filePath, file));
+                }
+            }
+        }
+
+        const unchangedFiles = files.filter(file => !changedFiles.includes(file));
+
+        return unchangedFiles;
+    }
+
+    getFilepaths(str: string, filePath: string): string[] {
+        const lines = str.split('\n');
+        return lines.map(line => path.join(filePath, line));
+    }
+
+
+    /**
     * Switches local project to different version.
     *
     * @param tag Name of the version to update to.
@@ -215,7 +269,7 @@ export default class Spider {
         const tagsStr = await ExecuteCommand(`git -C ${filePath} tags`)
         const tags: [string, number, string][] = []
         tagsStr.split('\n').forEach(async tag => {
-            const timeStampStr = await ExecuteCommand(`git -C ${filePath } show -1 -s --format=%ct ${tag}`)
+            const timeStampStr = await ExecuteCommand(`git -C ${filePath} show -1 -s --format=%ct ${tag}`)
             if (timeStampStr) {
                 const timeStamp = parseInt(timeStampStr) * 1000
                 const commitHash = await this.getCommitHash(filePath, tag)
@@ -247,7 +301,7 @@ export default class Spider {
                     return
                 }
 
-                resolve(stdout.substring(0, stdout.length-1))
+                resolve(stdout.substring(0, stdout.length - 1))
             })
         })
     }
