@@ -50,6 +50,20 @@ export default class Spider {
     private repo: string | null = null;
 
     /**
+     * Clears the directory specified by filePath
+     */
+    async clearDirectory(filePath: string): Promise<void> {
+        return new Promise(resolve => {
+            fs.promises.readdir(filePath).then(files => {
+                files.forEach(async file => {
+                    await fs.promises.rm(path.join(filePath, file), { recursive: true, force: true })
+                })
+                resolve()
+            })
+        })
+    }
+
+    /**
     * Downloads a repository from a given source and stores it
     * locally at the location defined by filePath.
     *
@@ -178,14 +192,6 @@ export default class Spider {
         }
     }
 
-    /**
-     * Clears the directory specified by filePath
-     */
-    async clearDirectory(filePath: string): Promise<void> {
-        (await fs.promises.readdir(filePath)).forEach(async file => {
-            await fs.promises.rm(path.join(filePath, file), { recursive: true, force: true })
-        })
-    }
 
     /**
     * Extracts author data from locally stored project.
