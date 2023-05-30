@@ -183,7 +183,7 @@ export default class Spider {
      */
     async clearDirectory(filePath: string): Promise<void> {
         (await fs.promises.readdir(filePath)).forEach(async file => {
-            await fs.promises.unlink(path.join(filePath, file))
+            await fs.promises.rm(path.join(filePath, file), { recursive: true, force: true })
         })
     }
 
