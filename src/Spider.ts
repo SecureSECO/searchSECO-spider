@@ -179,6 +179,15 @@ export default class Spider {
     }
 
     /**
+     * Clears the directory specified by filePath
+     */
+    async clearDirectory(filePath: string): Promise<void> {
+        (await fs.promises.readdir(filePath)).forEach(async file => {
+            await fs.promises.unlink(path.join(filePath, file))
+        })
+    }
+
+    /**
     * Extracts author data from locally stored project.
     *
     * @param filePath The path into which the project was cloned.
