@@ -39,11 +39,13 @@ async function ExecuteCommand(cmd: string): Promise<string> {
     return new Promise((resolve, reject) => {
         exec(cmd, (error, stdout, stderr) => {
             if (error) {
+                Logger.Warning(`Error executing command: ${cmd} (error): ${error}`, Logger.GetCallerLocation())
                 resolve('')
                 return
             }
 
             if (stderr) {
+                Logger.Warning(`Error executing command: ${cmd} (stderr): ${stderr}`, Logger.GetCallerLocation())
                 resolve('')
                 return
             }
@@ -224,13 +226,16 @@ export default class Spider {
     }
 
     // Ignores .git folder
-    async getAllFiles(filePath: string): Promise<string[]> {
+    async getAllFiles(filePath: string, acc: string[] = []): Promise<string[]> {
         const allFiles = await fs.promises.readdir(filePath, { withFileTypes: true });
-        const fileNames = allFiles
-            .filter(dirent => dirent.isFile() && !/^.git/.test(dirent.name))
-            .map(dirent => dirent.name);
-
-        return fileNames;
+        allFiles.forEach(file => {
+            if (/^.git/.test(file.name))
+                return
+            if (file.isDirectory )
+                return this.getAllFiles(path.join(filePath, file.name), acc)
+            else acc.push(file.name)
+        })
+        return acc;
     }
 
     // Based on https://github.com/mattpardee/git-blame-parser-js
@@ -255,6 +260,7 @@ export default class Spider {
 
                     if (stderr) {
                         resolve([]);
+                        return
                     }
 
                     const blamejs = new BlameJS();
@@ -387,7 +393,7 @@ export default class Spider {
                 } else {
                     currLines.get(currFile)?.push(lineNumArr[0]);
                 }
-            } else {
+            } else if (line) {
                 currMessage += line + "\n";
             }
         }
