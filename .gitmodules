@@ -1,0 +1,3 @@
+[submodule "src/searchSECO-logger"]
+	path = src/searchSECO-logger
+	url = https://github.com/SecureSECODAO/searchSECO-logger.git
