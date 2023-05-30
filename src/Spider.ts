@@ -28,6 +28,12 @@ export interface CodeBlock {
 
 export type AuthorData = Map<string, CodeBlock[]>;
 
+export interface VulnerabilityData {
+    commit: string;
+    vulnerability: string;
+    lines: Map<string, number[]>;
+}
+
 async function ExecuteCommand(cmd: string): Promise<string> {
     return new Promise((resolve, reject) => {
         exec(cmd, (error, stdout, stderr) => {
@@ -237,7 +243,7 @@ export default class Spider {
                     reject(error);
                     return;
                 }
-    
+
                 if (stderr) {
                     reject(new Error(stderr));
                     return;
@@ -247,29 +253,29 @@ export default class Spider {
                         reject(error);
                         return;
                     }
-    
+
                     if (stderr) {
                         reject(new Error(stderr));
                     }
-    
+
                     const blamejs = new BlameJS();
                     blamejs.parseBlame(stdout);
                     const commitData = blamejs.getCommitData();
                     const lineData: { [key: string]: any }[] = Object.values(blamejs.getLineData());
-    
+
                     // Group lines by commit hash
                     const groupedLines = lineData.reduce((groups: { [key: string]: any[] }, line) => {
                         (groups[line.hash.toString()] = groups[line.hash.toString()] || []).push(line);
                         return groups;
                     }, {});
-    
+
                     // Transform into an array of CodeBlock
                     const codeBlocks: CodeBlock[] = [];
                     for (const hash in groupedLines) {
                         const commit = commitData[hash];
                         const lines = groupedLines[hash];
                         codeBlocks.push({
-                            line: lines[0].lineNumber, // assuming lines are sorted by lineNumber
+                            line: lines[0].lineNumber,
                             numLines: lines.length,
                             commit: {
                                 author: commit.author,
@@ -291,7 +297,7 @@ export default class Spider {
             });
         });
     }
-    
+
 
     async getTags(filePath: string): Promise<[string, number, string][]> {
         const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`)
@@ -334,6 +340,69 @@ export default class Spider {
                 resolve(stdout.substring(0, stdout.length - 1))
             })
         })
+    }
+
+    /**
+    * Extracts vulnerability data from locally stored project.
+    *
+    * @param filePath The path into which the project was cloned.
+    */
+    async getVulns(filePath: string): Promise<VulnerabilityData[]> {
+        const command = `git -C "${filePath}" --no-pager log --all -p --unified=0 --no-prefix --pretty=format:"START%nParent: %P%nTitle: %s%nMessage: %b%nEND%n" --grep="CVE-20"`;
+        const vulnsStr = await ExecuteCommand(command);
+
+        const vulns: VulnerabilityData[] = [];
+
+        let currParent = "";
+        let currMessage = "";
+        let currFile = "";
+        let currLines = new Map<string, number[]>();
+        const lines = vulnsStr.split('\n');
+
+        for (const line of lines) {
+            if (line.startsWith('START')) {
+                if (currMessage !== "" && !/(merge|revert|upgrade)/i.test(currMessage)) {
+                    const codePos = currMessage.indexOf("CVE-");
+                    vulns.push({
+                        commit: currParent,
+                        vulnerability: currMessage.slice(codePos, currMessage.indexOf(" ", codePos)),
+                        lines: currLines
+                    });
+                }
+                currMessage = "";
+                currLines = new Map<string, number[]>();
+            } else if (line.startsWith('Parent: ')) {
+                currParent = line.slice(8, line.indexOf(' ', 8));
+            } else if (line.startsWith('Title: ') || line.startsWith('Message: ')) {
+                currMessage += line.slice(line.indexOf(' ')) + "\n";
+            } else if (line.startsWith('diff')) {
+                currFile = line.slice(11, line.indexOf(' ', 11));
+                currLines.set(currFile, []);
+            } else if (line.startsWith('@@')) {
+                const lineNumStr = line.slice(4, line.indexOf(' ', 4));
+                const lineNumArr = lineNumStr.split(',').map(x => parseInt(x));
+                if (lineNumArr.length === 2) {
+                    for (let i = 0; i < lineNumArr[1]; i++) {
+                        currLines.get(currFile)?.push(lineNumArr[0] + i);
+                    }
+                } else {
+                    currLines.get(currFile)?.push(lineNumArr[0]);
+                }
+            } else {
+                currMessage += line + "\n";
+            }
+        }
+
+        if (currMessage !== "" && !/(merge|revert|upgrade)/i.test(currMessage)) {
+            const codePos = currMessage.indexOf("CVE-");
+            vulns.push({
+                commit: currParent,
+                vulnerability: currMessage.slice(codePos, currMessage.indexOf(" ", codePos)),
+                lines: currLines
+            });
+        }
+
+        return vulns;
     }
 
     async getVersionTime(filePath: string, version: string): Promise<string> {

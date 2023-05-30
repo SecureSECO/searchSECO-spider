@@ -88,7 +88,6 @@ describe("Spider", () => {
         }, 100000);
     });
 
-
     describe("switchVersion", () => {
         it("switches to a different version", async () => {
             const tag = "v1.19.3";
