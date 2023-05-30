@@ -93,7 +93,7 @@ export default class Spider {
             const changed = await ExecuteCommand(command);
             changedFiles = this.getFilepaths(changed, filePath);
         }
-        await this.switchVersion(newTag);
+        await this.switchVersion(newTag, filePath);
         console.log(`Switched to tag: ${newTag}`);
 
         // Get all files in repository.
@@ -135,14 +135,14 @@ export default class Spider {
     * @param tag Name of the version to update to.
     * @param filePath Local path where project is stored.
     */
-    async switchVersion(tag: string): Promise<void> {
+    async switchVersion(tag: string, filePath: string): Promise<void> {
         try {
-            if (!this.repo) {
-                throw new Error('Repository not initialized.');
+            if (!fs.existsSync(filePath)) {
+                throw new Error('Repository not found.');
             }
             await checkout({
                 fs,
-                dir: this.repo,
+                dir: filePath,
                 ref: tag,
             });
         } catch (error) {
@@ -150,6 +150,7 @@ export default class Spider {
             throw error;
         }
     }
+
 
     /**
     * Trims the local files to only keep the specified ones.

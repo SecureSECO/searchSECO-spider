@@ -92,7 +92,7 @@ describe("Spider", () => {
         it("switches to a different version", async () => {
             const tag = "v1.19.3";
 
-            await spider.switchVersion(tag);
+            await spider.switchVersion(tag, tempDir);
 
             // Get the current HEAD of the repository
             const currentHead = await git.resolveRef({ fs, dir: tempDir, ref: 'HEAD' });
