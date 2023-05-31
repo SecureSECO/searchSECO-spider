@@ -212,7 +212,7 @@ export default class Spider {
     */
     async downloadAuthor(filePath: string): Promise<AuthorData> {
         const authorData: AuthorData = new Map();
-        const files = this.getAllFiles(filePath);
+        const files = this.getAllFiles(filePath).map(file => file.replace(filePath, '.'));
 
         // Each file is processed in parallel
         const allAuthorData = await Promise.all(files.map(file => this.getBlameData(filePath, file)));
@@ -283,7 +283,7 @@ export default class Spider {
                         const commit = commitData[hash];
                         const lines = groupedLines[hash];
                         codeBlocks.push({
-                            line: lines[0].lineNumber,
+                            line: lines[0].originalLine,
                             numLines: lines.length,
                             commit: {
                                 author: commit.author,
