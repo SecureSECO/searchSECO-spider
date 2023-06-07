@@ -84,7 +84,7 @@ export default class Spider {
     * @param filePath Local path where to store the source.
     * @param branch Branch of the source to download.
     */
-    async downloadRepo(url: string, filePath: string, branch: string): Promise<void> {
+    async downloadRepo(url: string, filePath: string, branch: string): Promise<boolean> {
         try {
             await clone({
                 fs,
@@ -95,9 +95,11 @@ export default class Spider {
                 singleBranch: false,
             });
             this.repo = filePath;
+            return true;
         }
         catch (error) {
             Logger.Warning(`Failed to download ${url} to ${filePath}: ${error}`, Logger.GetCallerLocation())
+            return false;
         }
     }
 
