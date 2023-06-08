@@ -67,13 +67,18 @@ export default class Spider {
      * Clears the directory specified by filePath
      */
     async clearDirectory(filePath: string): Promise<void> {
-        return new Promise(resolve => {
-
+        try {
             if (!fs.existsSync(filePath))
-                resolve()
+                return
 
-            fs.promises.rm(filePath, { recursive: true, force: true }).then(() => resolve())
-        })
+            await fs.promises.rm(filePath, { recursive: true, force: true })
+        } catch (e) {
+            Logger.Warning("Could not remove directory .tmp, retrying after 2 seconds...", Logger.GetCallerLocation())
+            setTimeout(async () => {
+                await this.clearDirectory(filePath)
+            }, 2000)
+        }
+        
     }
 
     /**
@@ -229,11 +234,15 @@ export default class Spider {
     getAllFiles(dir: string): string[] {
         function recursivelyGetFiles(currDir: string, acc: string[]): string[] {
             fs.readdirSync(currDir).forEach((file: string) => {
-                if (/^.git/.test(file))
-                    return
+                if (/(^.git)|(\\tests?\\)|(\\dist\\)/.test(file.toLowerCase()))
+                    return acc
                 const abs_path = path.join(currDir, file);
-                if (fs.statSync(abs_path).isDirectory()) return recursivelyGetFiles(abs_path, acc);
-                else acc.push(abs_path);
+                try {
+                    if (fs.statSync(abs_path).isDirectory()) return recursivelyGetFiles(abs_path, acc);
+                    else acc.push(abs_path);
+                } catch (e) {
+                    return acc
+                }
             });
             return acc
         }
