@@ -73,7 +73,7 @@ export default class Spider {
 
             await fs.promises.rm(filePath, { recursive: true, force: true })
         } catch (e) {
-            Logger.Warning("Could not remove directory .tmp, retrying after 2 seconds...", Logger.GetCallerLocation())
+            Logger.Warning(`Could not remove directory ${filePath}, retrying after 2 seconds...`, Logger.GetCallerLocation())
             setTimeout(async () => {
                 await this.clearDirectory(filePath)
             }, 2000)
