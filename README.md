@@ -2,15 +2,15 @@
 
 This is the Spider of the SearchSECO project. The Spider is responsible for
 retrieving data (source files and author data) from (Git-based) sources on the
-internet and communicating this data to the Controller component of the system.
+internet and communicating this data to the Miner component of the system.
 The spider needs a stable internet connection to the source in question to be
 able to clone projects, to then process these locally.
 
 ## Usage
 
-The Spider primarily serves as a submodule within the Controller. For detailed
+The Spider primarily serves as a submodule within the Miner. For detailed
 instructions on integrating and utilizing the Spider in your system, please refer
-to the Controller's documentation.
+to the [Miner's documentation](https://github.com/SecureSECODAO/searchSECO-miner).
 
 ## Dependencies
 
