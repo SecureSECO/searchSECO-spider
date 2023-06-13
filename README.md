@@ -10,7 +10,7 @@ able to clone projects, to then process these locally.
 
 The Spider primarily serves as a submodule within the Miner. For detailed
 instructions on integrating and utilizing the Spider in your system, please refer
-to the [Miner's documentation](https://github.com/SecureSECODAO/searchSECO-miner).
+to the [SearchSECO Miner documentation](https://github.com/SecureSECODAO/searchSECO-miner).
 
 ## Dependencies
 
