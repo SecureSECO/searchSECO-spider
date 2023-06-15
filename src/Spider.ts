@@ -17,6 +17,19 @@ const SUPPORTED_LANG_EXTENTIONS = [
     'java'
 ]
 
+const EXCLUDE_PATTERNS = [
+    '.git', 
+    'test', 
+    'tests', 
+    'build',
+    'dist',
+    'demo',
+    'third_party',
+    'docs',
+    'node_modules', 
+    'generated'
+]
+
 export interface CommitData {
     author: string;
     authorMail: string;
@@ -247,7 +260,8 @@ export default class Spider {
     getAllFiles(dir: string): string[] {
         function recursivelyGetFiles(currDir: string, acc: string[]): string[] {
             fs.readdirSync(currDir).forEach((file: string) => {
-                if (/(^.git)|(\\tests?\\)|(\\dist\\)/.test(file.toLowerCase()))
+                file = file.replace('\\', '/')
+                if (EXCLUDE_PATTERNS.some(pat => file.toLowerCase().includes(pat)))
                     return acc
                 const abs_path = path.join(currDir, file);
                 try {
