@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import Spider from "./src/Spider";
 
 (async () => {

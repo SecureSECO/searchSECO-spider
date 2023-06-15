@@ -1,4 +1,6 @@
-import git, { clone, checkout } from 'isomorphic-git';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-var-requires */
+import { clone, checkout } from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import fs from 'fs';
 import * as path from 'path';
@@ -6,6 +8,14 @@ const BlameJS = require('blamejs')
 const glob = require('glob');
 import { exec } from 'child_process';
 import Logger, { Verbosity } from './searchSECO-logger/src/Logger'
+
+const SUPPORTED_LANG_EXTENTIONS = [
+    'cpp',
+    'cs',
+    'js',
+    'py',
+    'java'
+]
 
 export interface CommitData {
     author: string;
@@ -36,7 +46,7 @@ export interface VulnerabilityData {
 }
 
 async function ExecuteCommand(cmd: string): Promise<string> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         exec(cmd, (error, stdout, stderr) => {
             if (error) {
                 Logger.Warning(`Error executing command: ${cmd} (error): ${error}`, Logger.GetCallerLocation())
@@ -215,18 +225,19 @@ export default class Spider {
     * Extracts author data from locally stored project.
     *
     * @param filePath The path into which the project was cloned.
-    * @param lines The files to keep.
     */
-    async downloadAuthor(filePath: string): Promise<AuthorData> {
+    async downloadAuthor(filePath: string, batchSize = 100): Promise<AuthorData> {
         const authorData: AuthorData = new Map();
-        const files = this.getAllFiles(filePath).map(file => file.replace(filePath, '.'));
+        const files = this.getAllFiles(filePath)
+            .filter(file => SUPPORTED_LANG_EXTENTIONS.includes(file.split('.').pop()))
+            .map(file => file.replace(filePath, '.'));
 
-        // Each file is processed in parallel
-        const allAuthorData = await Promise.all(files.map(file => this.getBlameData(filePath, file)));
-
-        // Set the authorData map
-        for (let i = 0; i < files.length; i++) {
-            authorData.set(files[i], allAuthorData[i]);
+        while(files.length > 0) {
+            const batch = files.splice(0, batchSize)
+            const batchAuthorData = await Promise.all(batch.map(file => this.getBlameData(filePath, file)));
+            for (let i = 0; i < batch.length; i++) {
+                authorData.set(batch[i], batchAuthorData[i])
+            }
         }
 
         return authorData;
@@ -254,7 +265,7 @@ export default class Spider {
 
     // Based on https://github.com/mattpardee/git-blame-parser-js
     getBlameData(filePath: string, file: string): Promise<CodeBlock[]> {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             // Check the git status before proceeding with blaming
             exec(`git -C ${filePath} status`, (error, stdout, stderr) => {
                 if (error) {
@@ -344,7 +355,7 @@ export default class Spider {
     }
 
     getCommitHash(filePath: string, tag: string): Promise<string> {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             exec(`git -C ${filePath} rev-list -n 1 ${tag}`, (error, stdout, stderr) => {
                 if (error) {
                     resolve('')
@@ -425,7 +436,7 @@ export default class Spider {
     }
 
     async getVersionTime(filePath: string, version: string): Promise<string> {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             exec(`git -C ${filePath} show -s --format=%ct ${version}`, (error, stdout, stderr) => {
                 if (error) {
                     resolve('')
