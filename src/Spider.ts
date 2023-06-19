@@ -242,11 +242,8 @@ export default class Spider {
     *
     * @param filePath The path into which the project was cloned.
     */
-    async downloadAuthor(filePath: string, batchSize = 100): Promise<AuthorData> {
+    async downloadAuthor(filePath: string, files: string[], batchSize = 100): Promise<AuthorData> {
         const authorData: AuthorData = new Map();
-        const files = this.getAllFiles(filePath)
-            .filter(file => SUPPORTED_LANG_EXTENTIONS.includes(file.split('.').pop()))
-            .map(file => file.replace(filePath, '.'));
 
         while(files.length > 0) {
             const batch = files.splice(0, batchSize)
