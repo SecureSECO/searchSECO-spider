@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-var-requires */
-import { clone, checkout } from 'isomorphic-git';
+import { clone } from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import fs from 'fs';
 import * as path from 'path';
@@ -68,7 +68,6 @@ async function ExecuteCommand(cmd: string): Promise<string> {
             }
 
             if (stderr) {
-                Logger.Warning(`Error executing command: ${cmd} (stderr): ${stderr}`, Logger.GetCallerLocation())
                 resolve('')
                 return
             }
@@ -196,11 +195,15 @@ export default class Spider {
             if (!fs.existsSync(filePath)) {
                 throw new Error('Repository not found.');
             }
-            await checkout({
-                fs,
-                dir: filePath,
-                ref: tag,
-            });
+
+            const cmd = `git -C ${filePath} checkout ${tag}`
+            await ExecuteCommand(cmd)
+
+            // await checkout({
+            //     fs,
+            //     dir: filePath,
+            //     ref: tag,
+            // });
         } catch (error) {
             Logger.Warning(`Failed to switch to version ${tag}: ${error}`, Logger.GetCallerLocation())
         }
