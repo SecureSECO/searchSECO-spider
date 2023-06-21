@@ -1,21 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-var-requires */
-import { clone } from 'isomorphic-git';
-import http from 'isomorphic-git/http/node';
+
 import fs from 'fs';
 import * as path from 'path';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-var-requires */
 const BlameJS = require('blamejs')
 const glob = require('glob');
 import { exec } from 'child_process';
 import Logger, { Verbosity } from './searchSECO-logger/src/Logger'
-
-const SUPPORTED_LANG_EXTENTIONS = [
-    'cpp',
-    'cs',
-    'js',
-    'py',
-    'java'
-]
 
 const EXCLUDE_PATTERNS = [
     '.git', 
@@ -27,8 +19,12 @@ const EXCLUDE_PATTERNS = [
     'third_party',
     'docs',
     'node_modules', 
-    'generated'
+    'generated',
+    'backup',
+    'examples'
 ]
+
+const TAGS_COUNT = 20
 
 export interface CommitData {
     author: string;
@@ -62,7 +58,7 @@ async function ExecuteCommand(cmd: string): Promise<string> {
     return new Promise((resolve) => {
         exec(cmd, (error, stdout, stderr) => {
             if (error) {
-                Logger.Warning(`Error executing command: ${cmd} (error): ${error}`, Logger.GetCallerLocation())
+                Logger.Error(`Error executing command: ${cmd} (error): ${error}`, Logger.GetCallerLocation())
                 resolve('')
                 return
             }
@@ -112,15 +108,18 @@ export default class Spider {
     * @param branch Branch of the source to download.
     */
     async downloadRepo(url: string, filePath: string, branch: string): Promise<boolean> {
-        try {
-            await clone({
-                fs,
-                http,
-                dir: filePath,
-                url: url,
-                ref: branch,
-                singleBranch: false,
-            });
+        try {  
+
+            await ExecuteCommand(`git clone ${url} --branch ${branch} --single-branch ${filePath}`)
+
+            // await clone({
+            //     fs,
+            //     http,
+            //     dir: filePath,
+            //     url: url,
+            //     ref: branch,
+            //     singleBranch: false,
+            // });
             this.repo = filePath;
             return true;
         }
@@ -141,6 +140,9 @@ export default class Spider {
     *                           which were deleted from the local project.
     */
     async updateVersion(prevTag: string, newTag: string, filePath: string, prevUnchangedFiles: string[]): Promise<string[]> {
+
+        await ExecuteCommand(`git -C ${filePath} reset --hard`)
+
         // Get list of changed files between prevTag and newTag.
         let changedFiles: string[] = [];
         if (prevTag) {
@@ -168,13 +170,12 @@ export default class Spider {
                     removedFiles.push(fileString);
 
                     // Delete file locally.
-                    await fs.promises.unlink(path.join(filePath, file));
+                    await fs.promises.unlink(file);
                 }
             }
         }
 
-        const unchangedFiles = files.filter(file => !changedFiles.includes(file));
-
+        const unchangedFiles = files.filter(file => !changedFiles.includes(file)).map(file => file.replace(filePath, '.'));
         return unchangedFiles;
     }
 
@@ -195,15 +196,8 @@ export default class Spider {
             if (!fs.existsSync(filePath)) {
                 throw new Error('Repository not found.');
             }
-
-            const cmd = `git -C ${filePath} checkout ${tag}`
-            await ExecuteCommand(cmd)
-
-            // await checkout({
-            //     fs,
-            //     dir: filePath,
-            //     ref: tag,
-            // });
+            await ExecuteCommand(`git -C ${filePath} reset --hard`)
+            await ExecuteCommand(`git -C ${filePath} checkout ${tag}`)
         } catch (error) {
             Logger.Warning(`Failed to switch to version ${tag}: ${error}`, Logger.GetCallerLocation())
         }
@@ -242,11 +236,15 @@ export default class Spider {
     *
     * @param filePath The path into which the project was cloned.
     */
-    async downloadAuthor(filePath: string, files: string[], batchSize = 100): Promise<AuthorData> {
+    async downloadAuthor(filePath: string, files: string[], batchSize = 25): Promise<AuthorData> {
+
+        Logger.Info(`Blaming and processing ${files.length} files`, Logger.GetCallerLocation())
+
         const authorData: AuthorData = new Map();
 
         while(files.length > 0) {
             const batch = files.splice(0, batchSize)
+            Logger.Debug(`${files.length} files left`, Logger.GetCallerLocation())
             const batchAuthorData = await Promise.all(batch.map(file => this.getBlameData(filePath, file)));
             for (let i = 0; i < batch.length; i++) {
                 authorData.set(batch[i], batchAuthorData[i])
@@ -260,7 +258,6 @@ export default class Spider {
     getAllFiles(dir: string): string[] {
         function recursivelyGetFiles(currDir: string, acc: string[]): string[] {
             fs.readdirSync(currDir).forEach((file: string) => {
-                file = file.replace('\\', '/')
                 if (EXCLUDE_PATTERNS.some(pat => file.toLowerCase().includes(pat)))
                     return acc
                 const abs_path = path.join(currDir, file);
@@ -274,7 +271,7 @@ export default class Spider {
             return acc
         }
     
-        return recursivelyGetFiles(dir.replace('\\', '/'), [])
+        return recursivelyGetFiles(dir, [])
     }
 
     // Based on https://github.com/mattpardee/git-blame-parser-js
@@ -342,48 +339,48 @@ export default class Spider {
         });
     }
 
-
     async getTags(filePath: string): Promise<[string, number, string][]> {
         const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`)
-        const tags: [string, number, string][] = []
-        tagsStr.split('\n').forEach(async tag => {
-            if (!tag)
-                return
+        const processedTags: [string, number, string][] = []
+
+        let tags = tagsStr.split('\n').filter(tag => tag)
+        Logger.Info(`Project has ${tags.length} tags`, Logger.GetCallerLocation())
+
+        // Select a subset of the tags if the count is too high
+        if (tags.length > TAGS_COUNT) {
+            Logger.Info(`Grabbing a subset of ${TAGS_COUNT} tags`, Logger.GetCallerLocation())
+            const newTags: string[] = []
+            const fraction = (tags.length - 1) / (TAGS_COUNT - 1)
+            for (let i = 0; i < TAGS_COUNT; i++)
+                newTags[i] = tags[Math.round(fraction * i)]
+            tags = JSON.parse(JSON.stringify(newTags))
+        }
+
+        for (const tag of tags) {
             const timeStampStr = await ExecuteCommand(`git -C ${filePath} show -1 -s --format=%ct ${tag}`)
             if (timeStampStr) {
                 const timeStamp = parseInt(timeStampStr) * 1000
                 const commitHash = await this.getCommitHash(filePath, tag)
-                tags.push([tag, timeStamp, commitHash])
+                if (commitHash)
+                    processedTags.push([tag, timeStamp, commitHash])
             }
-        })
+        }
 
-        tags.sort((a: [string, number, string], b: [string, number, string]) => {
+        processedTags.sort((a: [string, number, string], b: [string, number, string]) => {
             if (a[1] < b[1])
                 return -1
             else if (a[1] == b[1])
                 return 0
             return 1
         })
-
-        return tags
+        return processedTags
     }
 
-    getCommitHash(filePath: string, tag: string): Promise<string> {
-        return new Promise((resolve) => {
-            exec(`git -C ${filePath} rev-list -n 1 ${tag}`, (error, stdout, stderr) => {
-                if (error) {
-                    resolve('')
-                    return
-                }
-
-                if (stderr) {
-                    resolve('')
-                    return
-                }
-
-                resolve(stdout.substring(0, stdout.length - 1))
-            })
-        })
+    async getCommitHash(filePath: string, tag: string): Promise<string> {
+        const result = await ExecuteCommand(`git -C ${filePath} rev-list -n 1 ${tag}`)
+        if (!result)
+            return ''
+        return result.substring(0, result.length - 1)
     }
 
     /**
