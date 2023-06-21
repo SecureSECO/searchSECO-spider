@@ -27,7 +27,9 @@ const EXCLUDE_PATTERNS = [
     'third_party',
     'docs',
     'node_modules', 
-    'generated'
+    'generated',
+    'backup',
+    'examples'
 ]
 
 export interface CommitData {
@@ -195,15 +197,8 @@ export default class Spider {
             if (!fs.existsSync(filePath)) {
                 throw new Error('Repository not found.');
             }
-
-            const cmd = `git -C ${filePath} checkout ${tag}`
-            await ExecuteCommand(cmd)
-
-            // await checkout({
-            //     fs,
-            //     dir: filePath,
-            //     ref: tag,
-            // });
+            await ExecuteCommand(`git -C ${filePath} reset --hard`)
+            await ExecuteCommand(`git -C ${filePath} checkout ${tag}`)
         } catch (error) {
             Logger.Warning(`Failed to switch to version ${tag}: ${error}`, Logger.GetCallerLocation())
         }
@@ -242,11 +237,15 @@ export default class Spider {
     *
     * @param filePath The path into which the project was cloned.
     */
-    async downloadAuthor(filePath: string, files: string[], batchSize = 100): Promise<AuthorData> {
+    async downloadAuthor(filePath: string, files: string[], batchSize = 25): Promise<AuthorData> {
+
+        Logger.Info(`Blaming and processing ${files.length} files`, Logger.GetCallerLocation())
+
         const authorData: AuthorData = new Map();
 
         while(files.length > 0) {
             const batch = files.splice(0, batchSize)
+            Logger.Debug(`${files.length} files left`, Logger.GetCallerLocation())
             const batchAuthorData = await Promise.all(batch.map(file => this.getBlameData(filePath, file)));
             for (let i = 0; i < batch.length; i++) {
                 authorData.set(batch[i], batchAuthorData[i])
@@ -260,7 +259,7 @@ export default class Spider {
     getAllFiles(dir: string): string[] {
         function recursivelyGetFiles(currDir: string, acc: string[]): string[] {
             fs.readdirSync(currDir).forEach((file: string) => {
-                file = file.replace('\\', '/')
+                file = file
                 if (EXCLUDE_PATTERNS.some(pat => file.toLowerCase().includes(pat)))
                     return acc
                 const abs_path = path.join(currDir, file);
@@ -274,7 +273,7 @@ export default class Spider {
             return acc
         }
     
-        return recursivelyGetFiles(dir.replace('\\', '/'), [])
+        return recursivelyGetFiles(dir, [])
     }
 
     // Based on https://github.com/mattpardee/git-blame-parser-js
@@ -346,16 +345,18 @@ export default class Spider {
     async getTags(filePath: string): Promise<[string, number, string][]> {
         const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`)
         const tags: [string, number, string][] = []
-        tagsStr.split('\n').forEach(async tag => {
+
+        for (const tag of tagsStr.split('\n')) {
             if (!tag)
-                return
+                continue
             const timeStampStr = await ExecuteCommand(`git -C ${filePath} show -1 -s --format=%ct ${tag}`)
             if (timeStampStr) {
                 const timeStamp = parseInt(timeStampStr) * 1000
                 const commitHash = await this.getCommitHash(filePath, tag)
-                tags.push([tag, timeStamp, commitHash])
+                if (commitHash)
+                    tags.push([tag, timeStamp, commitHash])
             }
-        })
+        }
 
         tags.sort((a: [string, number, string], b: [string, number, string]) => {
             if (a[1] < b[1])
@@ -364,26 +365,14 @@ export default class Spider {
                 return 0
             return 1
         })
-
         return tags
     }
 
-    getCommitHash(filePath: string, tag: string): Promise<string> {
-        return new Promise((resolve) => {
-            exec(`git -C ${filePath} rev-list -n 1 ${tag}`, (error, stdout, stderr) => {
-                if (error) {
-                    resolve('')
-                    return
-                }
-
-                if (stderr) {
-                    resolve('')
-                    return
-                }
-
-                resolve(stdout.substring(0, stdout.length - 1))
-            })
-        })
+    async getCommitHash(filePath: string, tag: string): Promise<string> {
+        const result = await ExecuteCommand(`git -C ${filePath} rev-list -n 1 ${tag}`)
+        if (!result)
+            return ''
+        return result.substring(0, result.length - 1)
     }
 
     /**
