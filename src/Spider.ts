@@ -22,7 +22,8 @@ const EXCLUDE_PATTERNS = [
     'generated',
     'backup',
     'examples',
-    '.min.'
+    '.min.',
+    '-min.'
 ]
 
 const TAGS_COUNT = 20
@@ -149,7 +150,7 @@ export default class Spider {
         if (prevTag) {
             const command = `cd "${filePath}" && git diff --name-only ${prevTag} ${newTag}`;
             const changed = await ExecuteCommand(command);
-            changedFiles = this.getFilepaths(changed, filePath);
+            changedFiles = this.getFilepaths(changed, filePath).filter(file => !EXCLUDE_PATTERNS.some(pat => file.includes(pat)));
         }
         await this.switchVersion(newTag, filePath);
         Logger.Debug(`Switched to tag: ${newTag}`, Logger.GetCallerLocation())
@@ -198,6 +199,7 @@ export default class Spider {
                 throw new Error('Repository not found.');
             }
             await ExecuteCommand(`git -C ${filePath} reset --hard`)
+            await ExecuteCommand(`git -C ${filePath} stash`)
             await ExecuteCommand(`git -C ${filePath} checkout ${tag}`)
         } catch (error) {
             Logger.Warning(`Failed to switch to version ${tag}: ${error}`, Logger.GetCallerLocation())
