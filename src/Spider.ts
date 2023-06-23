@@ -23,7 +23,10 @@ const EXCLUDE_PATTERNS = [
     'backup',
     'examples',
     '.min.',
-    '-min.'
+    '-min.',
+    'static',
+    'public',
+    'vendor'
 ]
 
 const TAGS_COUNT = 20
@@ -58,7 +61,7 @@ export interface VulnerabilityData {
 
 async function ExecuteCommand(cmd: string): Promise<string> {
     return new Promise((resolve) => {
-        exec(cmd, (error, stdout, stderr) => {
+        exec(cmd, { maxBuffer: Infinity }, (error, stdout, stderr) => {
             if (error) {
                 Logger.Error(`Error executing command: ${cmd} (error): ${error}`, Logger.GetCallerLocation())
                 resolve('')
@@ -150,7 +153,9 @@ export default class Spider {
         if (prevTag) {
             const command = `cd "${filePath}" && git diff --name-only ${prevTag} ${newTag}`;
             const changed = await ExecuteCommand(command);
-            changedFiles = this.getFilepaths(changed, filePath).filter(file => !EXCLUDE_PATTERNS.some(pat => file.includes(pat)));
+            changedFiles = changed.split('\n')
+                .map(file => path.join(filePath, file))
+                .filter(file => !EXCLUDE_PATTERNS.some(pat => file.includes(pat)));
         }
         await this.switchVersion(newTag, filePath);
         Logger.Debug(`Switched to tag: ${newTag}`, Logger.GetCallerLocation())
@@ -181,12 +186,6 @@ export default class Spider {
         return unchangedFiles;
     }
 
-    getFilepaths(str: string, filePath: string): string[] {
-        const lines = str.split('\n');
-        return lines.map(line => path.join(filePath, line));
-    }
-
-
     /**
     * Switches local project to different version.
     *
@@ -215,12 +214,14 @@ export default class Spider {
     */
     async trimFiles(filePath: string, lines: Map<string, number[]>): Promise<void> {
         try {
-            const files: string[] = await new Promise((resolve, reject) => {
-                glob("**/*", { cwd: filePath, nodir: true, ignore: '**/.git/**' }, (err: Error | null, matches: string[]) => {
-                    if (err) reject(err);
-                    else resolve(matches);
-                });
-            });
+            // const files: string[] = await new Promise((resolve, reject) => {
+            //     glob("**/*", { cwd: filePath, nodir: true, ignore: '**/.git/**' }, (err: Error | null, matches: string[]) => {
+            //         if (err) reject(err);
+            //         else resolve(matches);
+            //     });
+            // });
+
+            const files = this.getAllFiles(filePath).map(file => file.replace(filePath, ''))
 
             for (const file of files) {
                 const fileString: string = path.normalize(file).replace(filePath, '');
