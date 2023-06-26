@@ -26,7 +26,8 @@ const EXCLUDE_PATTERNS = [
     '-min.',
     'static',
     'public',
-    'vendor'
+    'vendor',
+    'assets'
 ]
 
 const TAGS_COUNT = 20
