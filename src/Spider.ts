@@ -113,10 +113,10 @@ export default class Spider {
     * @param filePath Local path where to store the source.
     * @param branch Branch of the source to download.
     */
-    async downloadRepo(url: string, filePath: string, branch: string): Promise<boolean> {
+    async downloadRepo(url: string, filePath: string, branch: string = undefined): Promise<boolean> {
         try {  
 
-            await ExecuteCommand(`git clone ${url} --branch ${branch} --single-branch ${filePath}`)
+            await ExecuteCommand(`git clone ${url} ${branch ? `--branch ${branch}` : ''} --single-branch ${filePath}`)
 
             // await clone({
             //     fs,
