@@ -357,7 +357,6 @@ export default class Spider {
 			tags = JSON.parse(JSON.stringify(newTags));
 		}
 
-<<<<<<< Updated upstream
 		for (const tag of tags) {
 			const timeStampStr = await ExecuteCommand(`git -C ${filePath} show -1 -s --format=%ct ${tag}`);
 			if (timeStampStr) {
@@ -366,36 +365,6 @@ export default class Spider {
 				if (commitHash) processedTags.push([tag, timeStamp, commitHash]);
 			}
 		}
-=======
-                    // Transform into an array of CodeBlock
-                    const codeBlocks: CodeBlock[] = [];
-                    for (const hash in groupedLines) {
-                        const commit = commitData[hash];
-                        const lines = groupedLines[hash];
-                        codeBlocks.push({
-                            line: lines[0].finalLine,
-                            numLines: lines.length,
-                            commit: {
-                                author: commit.author,
-                                authorMail: commit.authorMail,
-                                authorTime: commit.authorTime,
-                                authorTz: commit.authorTz,
-                                committer: commit.committer,
-                                committerMail: commit.committerMail,
-                                committerTime: commit.committerTime,
-                                committerTz: commit.committerTz,
-                                summary: commit.summary,
-                                previousHash: commit.previousHash,
-                                fileName: commit.filename,
-                            },
-                        });
-                    }
-                    resolve(codeBlocks);
-                });
-            });
-        });
-    }
->>>>>>> Stashed changes
 
 		processedTags.sort((a: [string, number, string], b: [string, number, string]) => {
 			if (a[1] < b[1]) return -1;
