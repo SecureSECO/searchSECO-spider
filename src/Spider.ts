@@ -1,9 +1,5 @@
 import fs from 'fs';
 import * as path from 'path';
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-var-requires */
-const BlameJS = require('blamejs');
 import { exec } from 'child_process';
 import Logger, { Verbosity } from './searchSECO-logger/src/Logger';
 
@@ -36,7 +32,19 @@ export interface CommitData {
 	committerTz: string;
 	summary: string;
 	previousHash: string;
-	fileName: string;
+	filename: string;
+}
+
+type CommitOutput = {
+	[key: string]: CommitData
+}
+
+type LineData = {
+	code: string,
+	finalLine: string,
+	hash: string,
+	numLines: string,
+	originalLine: string
 }
 
 export interface CodeBlock {
@@ -53,16 +61,17 @@ export interface VulnerabilityData {
 	lines: Map<string, number[]>;
 }
 
+
 async function ExecuteCommand(cmd: string): Promise<string> {
 	return new Promise((resolve) => {
 		exec(cmd, { maxBuffer: Infinity }, (error, stdout, stderr) => {
-			if (error) {
+			if (error && !stdout) {
 				Logger.Error(`Error executing command: ${cmd} (error): ${error}`, Logger.GetCallerLocation());
 				resolve('');
 				return;
 			}
 
-			if (stderr) {
+			if (stderr && !stdout) {
 				resolve('');
 				return;
 			}
@@ -70,6 +79,99 @@ async function ExecuteCommand(cmd: string): Promise<string> {
 			resolve(stdout);
 		});
 	});
+}
+
+function join(str: string[], combinator: string, start: number = 0): string {
+    const copy = str.slice(start)
+    return copy.join(combinator)
+}
+
+class GitBlamer {
+    public ParseBlame(input: string): CodeBlock[] {
+        const lines = input.split('\n')
+        const commitData = new Map<string, CommitData>()
+        const codeData: CodeBlock[] = []
+
+        let codeBlocks = -1
+        let settingCommitData = false
+
+        let currentCommitHash = ''
+        let previousCommitHash = ''
+
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i][0] === '\t') {
+                settingCommitData = false
+                previousCommitHash = currentCommitHash
+                continue
+            }
+
+            const arrLine = lines[i].split(' ')
+            if (settingCommitData) {
+                this.parseCommitLine(currentCommitHash, commitData, arrLine)
+                continue
+            }
+
+            if (arrLine[0] === "previous")
+                continue
+
+			const isHash = /([a-f0-9]{40})/.test(arrLine[0])
+			if (!isHash)
+				continue
+
+            currentCommitHash = arrLine[0]
+            if (currentCommitHash !== previousCommitHash) {
+                if (!commitData.has(currentCommitHash)) {
+                    settingCommitData = true
+                    commitData.set(currentCommitHash, {} as CommitData)
+                }
+
+                codeBlocks++
+                codeData.push({
+                    line: Number(arrLine[2]),
+                    numLines: 1,
+                    commit: commitData.get(currentCommitHash)
+                })
+            } 
+            else codeData[codeBlocks].numLines++
+        }
+        return codeData
+    }
+
+    private parseCommitLine(commit: string, commitData: Map<string, CommitData>, line: string[]) {
+        if (line.length < 2) {
+            if (line[0] === "boundary")
+                return
+            // Set author to unknown if author's name isn't given.
+            if (line[0] === "author")
+            {
+                commitData.get(commit).author = "Unknown author";
+                return;
+            }
+            // Set committer to unknown if committer's's name isn't given.
+            if (line[0] === "committer")
+            {
+                commitData.get(commit).committer = "Unknown committer";
+                return;
+            }
+            Logger.Warning("Blame data has incorrect format.", Logger.GetCallerLocation());
+            return;
+        }
+
+        switch (line[0]) {
+            case 'author': commitData.get(commit).author = join(line, ' ', 1); break;
+            case "author-mail": commitData.get(commit).authorMail = line[1]; break;
+            case "author-time": commitData.get(commit).authorTime = line[1]; break;
+            case "author-tz": commitData.get(commit).authorTz = line[1]; break;
+            case "committer": commitData.get(commit).committer = join(line, ' ', 1); break;
+            case "committer-mail": commitData.get(commit).committerMail = line[1]; break;
+            case "committer-time": commitData.get(commit).committerTime = line[1]; break;
+            case "committer-tz": commitData.get(commit).committerTz = line[1]; break;
+            case "summary": commitData.get(commit).summary = join(line, ' ', 1); break;
+            case "filename": commitData.get(commit).filename = line[1]; break;
+            case "previous": commitData.get(commit).previousHash = join(line, ' ', 1); break;
+        }
+    }
+
 }
 
 export default class Spider {
@@ -273,72 +375,14 @@ export default class Spider {
 	}
 
 	// Based on https://github.com/mattpardee/git-blame-parser-js
-	getBlameData(filePath: string, file: string): Promise<CodeBlock[]> {
-		return new Promise((resolve) => {
-			// Check the git status before proceeding with blaming
-			exec(`git -C ${filePath} status`, (error, stdout, stderr) => {
-				if (error) {
-					resolve([]);
-					return;
-				}
+	async getBlameData(filePath: string, file: string): Promise<CodeBlock[]> {
+		await ExecuteCommand(`git -C ${filePath} status`)
+		const stdout = await ExecuteCommand(`git -C ${filePath} blame --line-porcelain "${file}"`)
 
-				if (stderr) {
-					resolve([]);
-					return;
-				}
-				exec(
-					`git -C ${filePath} blame --line-porcelain "${file}"`,
-					{ maxBuffer: Infinity },
-					(error, stdout, stderr) => {
-						if (error) {
-							resolve([]);
-							return;
-						}
+		const gitblamer = new GitBlamer()
+		const codeBlocks2 = gitblamer.ParseBlame(stdout)
 
-						if (stderr) {
-							resolve([]);
-							return;
-						}
-
-						const blamejs = new BlameJS();
-						blamejs.parseBlame(stdout);
-						const commitData = blamejs.getCommitData();
-						const lineData: { [key: string]: any }[] = Object.values(blamejs.getLineData());
-
-						// Group lines by commit hash
-						const groupedLines = lineData.reduce((groups: { [key: string]: any[] }, line) => {
-							(groups[line.hash.toString()] = groups[line.hash.toString()] || []).push(line);
-							return groups;
-						}, {});
-
-						// Transform into an array of CodeBlock
-						const codeBlocks: CodeBlock[] = [];
-						for (const hash in groupedLines) {
-							const commit = commitData[hash];
-							const lines = groupedLines[hash];
-							codeBlocks.push({
-								line: lines[0].originalLine,
-								numLines: lines.length,
-								commit: {
-									author: commit.author,
-									authorMail: commit.authorMail,
-									authorTime: commit.authorTime,
-									authorTz: commit.authorTz,
-									committer: commit.committer,
-									committerMail: commit.committerMail,
-									committerTime: commit.committerTime,
-									committerTz: commit.committerTz,
-									summary: commit.summary,
-									previousHash: commit.previousHash,
-									fileName: commit.filename,
-								},
-							});
-						}
-						resolve(codeBlocks);
-					}
-				);
-			});
-		});
+		return codeBlocks2
 	}
 
 	async getTags(filePath: string): Promise<[string, number, string][]> {
