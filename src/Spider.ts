@@ -380,9 +380,9 @@ export default class Spider {
 		const stdout = await ExecuteCommand(`git -C ${filePath} blame --line-porcelain "${file}"`)
 
 		const gitblamer = new GitBlamer()
-		const codeBlocks2 = gitblamer.ParseBlame(stdout)
+		const codeBlocks = gitblamer.ParseBlame(stdout)
 
-		return codeBlocks2
+		return codeBlocks
 	}
 
 	async getTags(filePath: string): Promise<[string, number, string][]> {
