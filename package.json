@@ -12,7 +12,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "blamejs": "^1.0.0",
     "isomorphic-git": "^1.23.0",
     "typescript": "^5.0.4"
   },
