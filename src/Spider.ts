@@ -15,8 +15,6 @@ const EXCLUDE_PATTERNS = [
 	'generated',
 	'backup',
 	'examples',
-	'.min.',
-	'-min.',
 ];
 
 const TAGS_COUNT = 20;
@@ -191,7 +189,6 @@ export default class Spider {
 	async clearDirectory(filePath: string): Promise<void> {
 		try {
 			if (!fs.existsSync(filePath)) return;
-
 			await fs.promises.rm(filePath, { recursive: true, force: true });
 		} catch (e) {
 			Logger.Warning(`Could not remove directory ${filePath}, retrying after 2 seconds...`, Logger.GetCallerLocation());
@@ -211,7 +208,7 @@ export default class Spider {
 	 */
 	async downloadRepo(url: string, filePath: string, branch: string = undefined): Promise<boolean> {
 		try {
-			await ExecuteCommand(`git clone ${url} ${branch ? `--branch ${branch}` : ''} --single-branch ${filePath}`);
+			await ExecuteCommand(`git clone ${url} ${branch ? `--branch ${branch}` : ''} --single-branch ${filePath} --depth 1 --shallow-submodules`);
 			this.repo = filePath;
 			return true;
 		} catch (error) {
@@ -319,11 +316,6 @@ export default class Spider {
 		}
 	}
 
-	/**
-	 * Extracts author data from locally stored project.
-	 *
-	 * @param filePath The path into which the project was cloned.
-	 */
 	async downloadAuthor(filePath: string, files: string[], batchSize = 25): Promise<AuthorData> {
 		Logger.Info(`Blaming and processing ${files.length} files`, Logger.GetCallerLocation());
 
