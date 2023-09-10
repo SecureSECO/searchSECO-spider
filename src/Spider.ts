@@ -1,7 +1,8 @@
 import fs from 'fs';
-import * as path from 'path';
+import path from 'path';
 import { exec } from 'child_process';
 import Logger, { Verbosity } from './searchSECO-logger/src/Logger';
+import { Octokit } from 'octokit';
 
 const EXCLUDE_PATTERNS = [
 	'.git',
@@ -18,6 +19,9 @@ const EXCLUDE_PATTERNS = [
 ];
 
 const TAGS_COUNT = 20;
+
+// large repo theshold set for 500 MB
+const LARGE_REPO_THRESHOLD = 500000
 
 export interface CommitData {
 	author: string;
@@ -175,11 +179,19 @@ class GitBlamer {
 }
 
 export default class Spider {
-	private repo: string | null = null;
+	private _url: string
+	private _owner: string
+	private _repo: string
+	private _largeRepo: boolean = false
+	private _octo: Octokit
+	private _tagNameToOctoData: Map<string, any>
 
-	constructor(verbosity: Verbosity = Verbosity.DEBUG) {
+	constructor(token: string, verbosity: Verbosity = Verbosity.DEBUG) {
 		Logger.SetModule('spider');
 		Logger.SetVerbosity(verbosity);
+
+		this._octo = new Octokit({ auth: token })
+		this._tagNameToOctoData = new Map()
 	}
 
 	/**
@@ -208,13 +220,32 @@ export default class Spider {
 	 */
 	async downloadRepo(url: string, filePath: string, branch: string = undefined): Promise<boolean> {
 		try {
-			await ExecuteCommand(`git clone ${url} ${branch ? `--branch ${branch}` : ''} --single-branch ${filePath} --depth 1 --shallow-submodules`);
-			this.repo = filePath;
+			const size = await this.getRepoSize(url)
+			this._largeRepo = size >= LARGE_REPO_THRESHOLD
+
+			await ExecuteCommand(
+				`git clone ${url} ${branch ? `--branch ${branch}` : ''} --single-branch ${filePath} ${this._largeRepo ? '--depth 1' : ''}`
+			);
+
+
+			[, this._owner, this._repo] = url.replace('https://', '').split('/')
+			this._url = url
 			return true;
 		} catch (error) {
 			Logger.Warning(`Failed to download ${url} to ${filePath}: ${error}`, Logger.GetCallerLocation());
 			return false;
 		}
+	}
+
+	private async getRepoSize(repo: string): Promise<number> {
+		try {
+			const santizedUrl = repo.replace('https://github.com', '/repos')
+			const result = await this._octo.request(`GET ${santizedUrl}`)
+			return result.data.size
+		} catch (err) {
+			throw err
+		}
+
 	}
 
 	/**
@@ -233,18 +264,39 @@ export default class Spider {
 		filePath: string,
 		prevUnchangedFiles: string[]
 	): Promise<string[]> {
-		await ExecuteCommand(`git -C ${filePath} reset --hard`);
 
-		// Get list of changed files between prevTag and newTag.
-		let changedFiles: string[] = [];
-		if (prevTag) {
-			const command = `cd "${filePath}" && git diff --name-only ${prevTag} ${newTag}`;
-			const changed = await ExecuteCommand(command);
-			changedFiles = changed
-				.split('\n')
-				.map((file) => path.join(filePath, file))
-				.filter((file) => !EXCLUDE_PATTERNS.some((pat) => file.includes(pat)));
+		async function getLocallyChangedFiles(): Promise<string[]> {
+			await ExecuteCommand(`git -C ${filePath} reset --hard`);
+			// Get list of changed files between prevTag and newTag.
+			let changedFiles: string[] = [];
+			if (prevTag) {
+				const command = `cd "${filePath}" && git diff --name-only ${prevTag} ${newTag}`;
+				const changed = await ExecuteCommand(command);
+				changedFiles = changed
+					.split('\n')
+					.map((file) => path.join(filePath, file))
+					.filter((file) => !EXCLUDE_PATTERNS.some((pat) => file.includes(pat)));
+			}
+			return changedFiles
 		}
+
+		const getRemotelyChangedFiles = async (): Promise<string[]> => {
+			const prevCommit = this._tagNameToOctoData.get(prevTag || '')
+			const newCommit = this._tagNameToOctoData.get(newTag)
+
+			if (!prevCommit)
+				return []
+
+			const result = await this._octo.rest.repos.compareCommits({
+				owner: this._owner,
+				repo: this._repo,
+				base: prevCommit.commit.sha,
+				head: newCommit.commit.sha
+			})
+			return result.data.files.map(f => f.filename).filter(f => !EXCLUDE_PATTERNS.some((pat) => f.includes(pat)))
+		}
+
+		const changedFiles = this._largeRepo ? await getRemotelyChangedFiles() : await getLocallyChangedFiles()
 		await this.switchVersion(newTag, filePath);
 		Logger.Debug(`Switched to tag: ${newTag}`, Logger.GetCallerLocation());
 
@@ -287,9 +339,17 @@ export default class Spider {
 			if (!fs.existsSync(filePath)) {
 				throw new Error('Repository not found.');
 			}
+
+			if (this._largeRepo) {
+				await this.clearDirectory(filePath)
+				await ExecuteCommand(`git clone ${this._url} ${filePath} --branch ${tag} --depth 1`)
+				return
+			}
+
 			await ExecuteCommand(`git -C ${filePath} reset --hard`);
 			await ExecuteCommand(`git -C ${filePath} stash`);
 			await ExecuteCommand(`git -C ${filePath} checkout ${tag}`);
+
 		} catch (error) {
 			Logger.Warning(`Failed to switch to version ${tag}: ${error}`, Logger.GetCallerLocation());
 		}
@@ -364,29 +424,67 @@ export default class Spider {
 	}
 
 	async getTags(filePath: string): Promise<[string, number, string][]> {
-		const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`);
-		const processedTags: [string, number, string][] = [];
 
-		let tags = tagsStr.split('\n').filter((tag) => tag);
-		Logger.Info(`Project has ${tags.length} tags`, Logger.GetCallerLocation());
+		function getSubset<T>(tags: T[]) {
+			
+			if (tags.length <= TAGS_COUNT)
+				return tags
 
-		// Select a subset of the tags if the count is too high
-		if (tags.length > TAGS_COUNT) {
+			// Select a subset of the tags if the count is too high
 			Logger.Info(`Grabbing a subset of ${TAGS_COUNT} tags`, Logger.GetCallerLocation());
-			const newTags: string[] = [];
+			const newTags: T[] = [];
 			const fraction = (tags.length - 1) / (TAGS_COUNT - 1);
-			for (let i = 0; i < TAGS_COUNT; i++) newTags[i] = tags[Math.round(fraction * i)];
-			tags = JSON.parse(JSON.stringify(newTags));
+			for (let i = 0; i < TAGS_COUNT; i++) {
+				newTags[i] = tags[Math.round(fraction * i)];
+			}
+			return newTags
 		}
 
-		for (const tag of tags) {
-			const timeStampStr = await ExecuteCommand(`git -C ${filePath} show -1 -s --format=%ct ${tag}`);
-			if (timeStampStr) {
-				const timeStamp = parseInt(timeStampStr) * 1000;
-				const commitHash = await this.getCommitHash(filePath, tag);
-				if (commitHash) processedTags.push([tag, timeStamp, commitHash]);
+		const getRemoteTags = async (): Promise<[string, number, string][]> => {
+			const processedTags: [string, number, string][] = [];
+			let currentPage = 0
+			let currentTags = await this._octo.rest.repos.listTags({ owner: this._owner, repo: this._repo, per_page: 100, page: currentPage++ })
+			const allTags: any[] = []
+			while (currentTags.data.length > 0) {
+				allTags.push(...currentTags.data)
+				currentTags = await this._octo.rest.repos.listTags({ owner: this._owner, repo: this._repo, per_page: 100, page: currentPage++ })
 			}
+
+			Logger.Info(`Project has ${allTags.length} tags`, Logger.GetCallerLocation())
+			const tags = getSubset<any>(allTags)
+			
+			for (const tag of tags) {
+				if (!tag.commit.sha)
+					continue
+				const result = await this._octo.rest.git.getCommit({ owner: this._owner, repo: this._repo, commit_sha: tag.commit.sha })
+				const timestamp = new Date(result.data.committer.date).getTime()
+				const commitHash = tag.commit.sha
+				this._tagNameToOctoData.set(tag.name, tag)
+				processedTags.push([tag.name, timestamp, commitHash]);
+			}
+			return processedTags
 		}
+
+		async function getLocalTags(): Promise<[string, number, string][]> {
+
+			const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`);
+			const allTags = tagsStr.split('\n').filter((tag) => tag)
+			Logger.Info(`Project has ${allTags.length} tags`, Logger.GetCallerLocation())
+			const tags = getSubset<string>(allTags)
+
+			const processedTags: [string, number, string][] = []
+			for (const tag of tags) {
+				const timeStampStr = await ExecuteCommand(`git -C ${filePath} show -1 -s --format=%ct ${tag}`);
+				if (timeStampStr) {
+					const timeStamp = parseInt(timeStampStr) * 1000;
+					const commitHash = await this.getCommitHash(filePath, tag);
+					if (commitHash) processedTags.push([tag, timeStamp, commitHash]);
+				}
+			}
+			return processedTags
+		}
+
+		const processedTags = this._largeRepo ? await getRemoteTags() : await getLocalTags()
 
 		processedTags.sort((a: [string, number, string], b: [string, number, string]) => {
 			if (a[1] < b[1]) return -1;
