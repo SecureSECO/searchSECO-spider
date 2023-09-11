@@ -465,8 +465,7 @@ export default class Spider {
 			return processedTags
 		}
 
-		async function getLocalTags(): Promise<[string, number, string][]> {
-
+		const getLocalTags = async (): Promise<[string, number, string][]> => {
 			const tagsStr = await ExecuteCommand(`git -C ${filePath} tag`);
 			const allTags = tagsStr.split('\n').filter((tag) => tag)
 			Logger.Info(`Project has ${allTags.length} tags`, Logger.GetCallerLocation())
