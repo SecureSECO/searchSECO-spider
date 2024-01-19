@@ -320,7 +320,7 @@ export default class Spider {
 					try {
 						await fs.promises.unlink(file);
 					} catch (e) {
-						Logger.Error(`Failed to unlink ${file} with error ${err}. SKipping...`, Logger.GetCallerLocation())
+						Logger.Error(`Failed to unlink ${file} with error ${e}. SKipping...`, Logger.GetCallerLocation())
 					}
 				}
 			}
