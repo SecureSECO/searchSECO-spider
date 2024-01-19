@@ -182,7 +182,7 @@ export default class Spider {
 	private _url: string
 	private _owner: string
 	private _repo: string
-	private _largeRepo: boolean = false
+	private _largeRepo = false
 	private _octo: Octokit
 	private _tagNameToOctoData: Map<string, any>
 
@@ -317,7 +317,11 @@ export default class Spider {
 					removedFiles.push(fileString);
 
 					// Delete file locally.
-					await fs.promises.unlink(file);
+					try {
+						await fs.promises.unlink(file);
+					} catch (e) {
+						Logger.Error(`Failed to unlink ${file} with error ${err}. SKipping...`, Logger.GetCallerLocation())
+					}
 				}
 			}
 		}
