@@ -226,6 +226,16 @@ export default class Spider {
 			await ExecuteCommand(
 				`git clone ${url} ${branch ? `--branch ${branch}` : ''} --single-branch ${filePath} ${this._largeRepo ? '--depth 1' : ''}`
 			);
+			// Check if a .git directory exists.
+			// This should be the case, but sometimes fails.
+			let gitDirPath = path.join(filePath, '.git');
+			let gitDir = await fs.promises.opendir(gitDirPath);
+			if (!gitDir) {
+				Logger.Warning(`No .git directory found for url ${url} (${filePath})`, Logger.GetCallerLocation());
+				return false;
+			}
+			await gitDir.close();
+
 
 
 			[, this._owner, this._repo] = url.replace('https://', '').split('/')
@@ -430,7 +440,7 @@ export default class Spider {
 	async getTags(filePath: string): Promise<[string, number, string][]> {
 
 		function getSubset<T>(tags: T[]) {
-			
+
 			if (tags.length <= TAGS_COUNT)
 				return tags
 
@@ -456,7 +466,7 @@ export default class Spider {
 
 			Logger.Info(`Project has ${allTags.length} tags`, Logger.GetCallerLocation())
 			const tags = getSubset<any>(allTags)
-			
+
 			for (const tag of tags) {
 				if (!tag.commit.sha)
 					continue
