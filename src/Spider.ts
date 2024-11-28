@@ -201,12 +201,10 @@ export default class Spider {
 	async clearDirectory(filePath: string): Promise<void> {
 		try {
 			if (!fs.existsSync(filePath)) return;
-			await fs.promises.rm(filePath, { recursive: true, force: true });
+			Logger.Info(`Removing directory ${filePath}`, Logger.GetCallerLocation());
+			await fs.promises.rm(filePath, { recursive: true, force: true, maxRetries: 3 });
 		} catch (e) {
-			Logger.Warning(`Could not remove directory ${filePath}, retrying after 2 seconds...`, Logger.GetCallerLocation());
-			setTimeout(async () => {
-				await this.clearDirectory(filePath);
-			}, 2000);
+			Logger.Warning(`Could not remove directory ${filePath}. Please remove it manually.`, Logger.GetCallerLocation());
 		}
 	}
 
